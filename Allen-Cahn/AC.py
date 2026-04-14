@@ -7,6 +7,7 @@ import math
 import argparse
 import os
 import sys
+import csv
 import matplotlib.gridspec as gridspec
 from plotting import newfig
 from mpl_toolkits.axes_grid1 import make_axes_locatable
@@ -91,6 +92,21 @@ def neural_net(layer_sizes):
     return model
 
 
+def build_results_dir(tf_iter, newton_iter, optimizer_name):
+    optimizer_folder = optimizer_name.capitalize()
+    run_folder = f"{tf_iter}_tf_iter_{newton_iter}_newton_iter"
+    results_dir = os.path.join(PROJECT_ROOT, "Results", "Allen-Cahn", optimizer_folder, run_folder)
+    os.makedirs(results_dir, exist_ok=True)
+    return results_dir
+
+
+def write_csv(path, header, rows):
+    with open(path, "w", newline="") as csv_file:
+        writer = csv.writer(csv_file)
+        writer.writerow(header)
+        writer.writerows(rows)
+
+
 
 #define the loss
 def loss(x_f_batch, t_f_batch,
@@ -157,6 +173,7 @@ def fit(x_f, t_f, x0, t0, u0, x_lb, t_lb, x_ub, t_ub, col_weights, u_weights, tf
     tf_optimizer_weights = tf.keras.optimizers.Adam(lr = 0.005, beta_1=.99)
     tf_optimizer_u = tf.keras.optimizers.Adam(lr = 0.005, beta_1=.99)
     learnable_optimizer = LearnableOptimizer(learning_rate=0.005)
+    training_history = []
 
     print(f"starting {optimizer_name} training")
 
@@ -187,15 +204,24 @@ def fit(x_f, t_f, x0, t0, u0, x_lb, t_lb, x_ub, t_ub, col_weights, u_weights, tf
             print('It: %d, Time: %.2f' % (epoch, elapsed))
             tf.print(f"mse_0: {mse_0}  mse_b  {mse_b}  mse_f: {mse_f}   total loss: {loss_value}")
             start_time = time.time()
+        training_history.append(
+            [epoch, float(loss_value.numpy()), float(mse_0.numpy()), float(mse_b.numpy()), float(mse_f.numpy())]
+        )
 
     #l-bfgs-b optimization
     print("Starting L-BFGS training")
 
     loss_and_flat_grad = get_loss_and_flat_grad(x_f_batch, t_f_batch, x0_batch, t0_batch, u0_batch, x_lb, t_lb, x_ub, t_ub, col_weights, u_weights)
 
-    lbfgs(loss_and_flat_grad,
-      get_weights(u_model),
-      Struct(), maxIter=newton_iter, learningRate=0.8)
+    _, lbfgs_f_hist, _ = lbfgs(
+        loss_and_flat_grad,
+        get_weights(u_model),
+        Struct(),
+        maxIter=newton_iter,
+        learningRate=0.8,
+    )
+    lbfgs_history = [[step, float(value.numpy())] for step, value in enumerate(lbfgs_f_hist)]
+    return training_history, lbfgs_history
 
 
 #L-BFGS implementation from https://github.com/pierremtb/PINNs-TF2.0
@@ -295,8 +321,11 @@ parser.add_argument(
     help="Optimizer used for neural network parameter updates.",
 )
 args = parser.parse_args()
+tf_iter = 100
+newton_iter = 100
+results_dir = build_results_dir(tf_iter=tf_iter, newton_iter=newton_iter, optimizer_name=args.optimizer)
 
-fit(
+training_history, lbfgs_history = fit(
     x_f,
     t_f,
     x0,
@@ -308,9 +337,19 @@ fit(
     t_ub,
     col_weights,
     u_weights,
-    tf_iter=100,
-    newton_iter=100,
+    tf_iter=tf_iter,
+    newton_iter=newton_iter,
     optimizer_name=args.optimizer,
+)
+write_csv(
+    os.path.join(results_dir, "training_loss.csv"),
+    ["epoch", "total_loss", "mse_0", "mse_b", "mse_f"],
+    training_history,
+)
+write_csv(
+    os.path.join(results_dir, "lbfgs_loss.csv"),
+    ["step", "loss"],
+    lbfgs_history,
 )
 
 
@@ -329,6 +368,14 @@ u_pred, f_u_pred = predict(X_star)
 error_u = np.linalg.norm(u_star-u_pred,2)/np.linalg.norm(u_star,2)
 
 print('Error u: %e' % (error_u))
+
+final_training_loss = training_history[-1][1] if training_history else float("nan")
+final_lbfgs_loss = lbfgs_history[-1][1] if lbfgs_history else float("nan")
+write_csv(
+    os.path.join(results_dir, "results_summary.csv"),
+    ["optimizer", "tf_iter", "newton_iter", "error_u", "final_training_loss", "final_lbfgs_loss"],
+    [[args.optimizer, tf_iter, newton_iter, float(error_u), final_training_loss, final_lbfgs_loss]],
+)
 
 
 U_pred = griddata(X_star, u_pred.flatten(), (X, T), method='cubic')
@@ -371,6 +418,8 @@ ax.set_ylabel('$x$')
 leg = ax.legend(frameon=False, loc = 'best')
 #    plt.setp(leg.get_texts(), color='w')
 ax.set_title('$u(t,x)$', fontsize = 10)
+fig.savefig(os.path.join(results_dir, "u_field_and_slices.png"), dpi=300, bbox_inches="tight")
+plt.close(fig)
 
 ####### Row 1: h(t,x) slices ##################
 gs1 = gridspec.GridSpec(1, 3)
@@ -418,8 +467,8 @@ cax = divider.append_axes("right", size="5%", pad=0.05)
 fig.colorbar(h, cax=cax)
 
 plt.legend(frameon=False, loc = 'best')
-
-plt.show()
+fig.savefig(os.path.join(results_dir, "u_pred.png"), dpi=300, bbox_inches="tight")
+plt.close(fig)
 
 fig, ax = plt.subplots()
 
@@ -433,7 +482,10 @@ ax.set_xlabel('$x$')
 ax.set_ylabel('$t$')
 cbar = plt.colorbar(ec)
 cbar.set_label('$\overline{f}_u$ prediction')
-plt.show()
+fig.savefig(os.path.join(results_dir, "f_u_pred.png"), dpi=300, bbox_inches="tight")
+plt.close(fig)
 
-plt.scatter(t_f, x_f, c = col_weights.numpy(), s = col_weights.numpy()/10)
-plt.show()
+fig, ax = plt.subplots()
+ax.scatter(t_f, x_f, c = col_weights.numpy(), s = col_weights.numpy()/10)
+fig.savefig(os.path.join(results_dir, "collocation_weights.png"), dpi=300, bbox_inches="tight")
+plt.close(fig)

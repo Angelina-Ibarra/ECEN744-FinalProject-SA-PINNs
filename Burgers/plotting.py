@@ -34,10 +34,10 @@ pgf_with_latex = {                      # setup matplotlib to use latex for outp
     "xtick.labelsize": 8,
     "ytick.labelsize": 8,
     "figure.figsize": figsize(1.0),     # default fig size of 0.9 textwidth
-    "pgf.preamble": [
+    "pgf.preamble": "\n".join([
         r"\usepackage[utf8x]{inputenc}",    # use utf8 fonts becasue your computer can handle it :)
         r"\usepackage[T1]{fontenc}",        # plots will be generated using this preamble
-        ]
+    ]),
     }
 
 # Fallback to non-LaTeX text rendering when TeX dependencies are missing.
@@ -47,6 +47,10 @@ else:
     # Keep mathtext rendering by default to avoid runtime failures when
     # partial TeX installations are present (missing style packages, etc.).
     pgf_with_latex["text.usetex"] = False
+
+if not pgf_with_latex["text.usetex"]:
+    pgf_with_latex.pop("pgf.texsystem", None)
+    pgf_with_latex.pop("pgf.preamble", None)
 
 mpl.rcParams.update(pgf_with_latex)
 
