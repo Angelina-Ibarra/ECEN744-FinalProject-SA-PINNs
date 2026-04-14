@@ -82,6 +82,14 @@ python burgers.py
 
 And the training will begin, followed by the plots.
 
+You can change the optimizer using the --optimizer CLI flag. The code currently supports the Adam and Learnable optimizer.
+
+```
+python burgers.py --optimizer adam
+
+python burgers.py --optimizer learnable
+```
+
 ## Note
 
 The results in the paper were calculated on GPU. Running for the full 10k/10k training iterations for Adam and L-BFGS will likely take a very long time on CPU.

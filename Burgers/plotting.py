@@ -9,6 +9,7 @@ Created on Mon Oct  9 20:11:57 2017
 
 import numpy as np
 import matplotlib as mpl
+import shutil
 #mpl.use('pgf')
 
 def figsize(scale, nplots = 1):
@@ -38,6 +39,15 @@ pgf_with_latex = {                      # setup matplotlib to use latex for outp
         r"\usepackage[T1]{fontenc}",        # plots will be generated using this preamble
         ]
     }
+
+# Fallback to non-LaTeX text rendering when TeX dependencies are missing.
+if shutil.which("latex") is None:
+    pgf_with_latex["text.usetex"] = False
+else:
+    # Keep mathtext rendering by default to avoid runtime failures when
+    # partial TeX installations are present (missing style packages, etc.).
+    pgf_with_latex["text.usetex"] = False
+
 mpl.rcParams.update(pgf_with_latex)
 
 import matplotlib.pyplot as plt

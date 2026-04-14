@@ -4,6 +4,9 @@ import matplotlib.pyplot as plt
 import time
 import scipy.io
 import math
+import argparse
+import os
+import sys
 import matplotlib.gridspec as gridspec
 from plotting import newfig
 from mpl_toolkits.axes_grid1 import make_axes_locatable
@@ -13,7 +16,27 @@ from tensorflow.keras.layers import Dense, Input
 from tensorflow.keras import layers, activations
 from scipy.interpolate import griddata
 from eager_lbfgs import lbfgs, Struct
-from pyDOE import lhs
+try:
+    from pyDOE import lhs
+except Exception:
+    try:
+        from pyDOE2 import lhs
+    except Exception:
+        def lhs(n, samples):
+            result = np.empty((samples, n))
+            for j in range(n):
+                cut = np.linspace(0.0, 1.0, samples + 1)
+                u = np.random.rand(samples)
+                points = cut[:samples] + u * (cut[1:] - cut[:samples])
+                np.random.shuffle(points)
+                result[:, j] = points
+            return result
+
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if PROJECT_ROOT not in sys.path:
+    sys.path.append(PROJECT_ROOT)
+
+from Optimizers.learnable_optimizer import LearnableOptimizer, reshape_to_model
 
 
 layer_sizes = [2, 50, 50, 50, 50, 1]
@@ -136,15 +159,16 @@ def f_model(x, y):
 
         return f_u
 
-def fit(x_f, t_f, x_lb, y_lb, x_ub, y_ub, x_rb, y_rb, x_lftb, y_lftb, col_weights, tf_iter, newton_iter):
+def fit(x_f, t_f, x_lb, y_lb, x_ub, y_ub, x_rb, y_rb, x_lftb, y_lftb, col_weights, tf_iter, newton_iter, optimizer_name="adam"):
 
     batch_sz = N_f
     n_batches =  N_f // batch_sz
     start_time = time.time()
     tf_optimizer = tf.keras.optimizers.Adam(lr = 0.001, beta_1=.99)
     tf_optimizer_coll = tf.keras.optimizers.Adam(lr = 0.001, beta_1=.99)
+    learnable_optimizer = LearnableOptimizer(learning_rate=0.001)
 
-    print("starting Adam training")
+    print(f"starting {optimizer_name} training")
     for epoch in range(tf_iter):
         for i in range(n_batches):
 
@@ -155,7 +179,13 @@ def fit(x_f, t_f, x_lb, y_lb, x_ub, y_ub, x_rb, y_rb, x_lftb, y_lftb, col_weight
                 loss_value, mse_b, mse_f = loss(x_f, y_f, x_lb, y_lb, x_ub, y_ub, x_rb, y_rb, x_lftb, y_lftb, col_weights)
                 grads = tape.gradient(loss_value, u_model.trainable_variables)
                 grads_col = tape.gradient(loss_value, col_weights)
-            tf_optimizer.apply_gradients(zip(grads, u_model.trainable_variables))
+            if optimizer_name == "learnable":
+                weights_updated = learnable_optimizer.apply_gradients(
+                    u_model.trainable_variables, grads, learnable_optimizer.optimizer
+                )
+                reshape_to_model(weights_updated, u_model)
+            else:
+                tf_optimizer.apply_gradients(zip(grads, u_model.trainable_variables))
             tf_optimizer_coll.apply_gradients(zip([-grads_col], [col_weights]))
 
 
@@ -266,8 +296,31 @@ x_lftb = tf.convert_to_tensor(X_lftb[:,0:1], dtype=tf.float32)
 y_lftb = tf.convert_to_tensor(X_lftb[:,1:2], dtype=tf.float32)
 
 #Fit helmholtz
-fit(x_f, y_f, x_lb, y_lb, x_ub, y_ub, x_rb, y_rb, x_lftb, y_lftb, col_weights,
-    tf_iter = 10000, newton_iter = 10000)
+parser = argparse.ArgumentParser(description="Train Helmholtz NTK PINN")
+parser.add_argument(
+    "--optimizer",
+    choices=["adam", "learnable"],
+    default="adam",
+    help="Optimizer used for neural network parameter updates.",
+)
+args = parser.parse_args()
+
+fit(
+    x_f,
+    y_f,
+    x_lb,
+    y_lb,
+    x_ub,
+    y_ub,
+    x_rb,
+    y_rb,
+    x_lftb,
+    y_lftb,
+    col_weights,
+    tf_iter=10000,
+    newton_iter=10000,
+    optimizer_name=args.optimizer,
+)
 
 #generate mesh for plotting
 X, Y = np.meshgrid(x,y)
