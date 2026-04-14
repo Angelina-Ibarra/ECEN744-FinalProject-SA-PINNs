@@ -1,64 +1,46 @@
-# Self-Adaptive PINN - Official Implementation
+# Evaluating Optimization Algorithms Tailored for SA-PINNs
+### Abstract:
+In this work we evaluate the effect of various optimization algorithms tailored for physics-informed neural networks (PINNs). The original Self-Adaptive PINN (SA-PINN) framework utilized the Adam optimization algorithm, which is commonly used in traditional deep learning models. As stated in the paper, these off-the-shelf optimization algorithms may not be appropriate for physics-informed networks. We have identified several works that propose alternative optimization algorithms better suited for physics-informed networks, and evaluate their effect on the performance of the SA-PINN framework. We test the Burgers’, Helmholtz, and Allen–Cahn partial differential equations (PDEs), assessing both computational efficiency and accuracy. We evaluate two main alternative optimization approaches against the baseline. First, self-scaled quasi-Newton methods (SSBFGS and SSBroyden), and second, a meta-learned optimizer (Bihlo, 2023), which trains a small neural network to act as the optimizer itself. By testing these optimization algorithms within the SA-PINN framework, we can determine whether better optimization complements or substitutes the self-adaptive weighting mechanism.
 
-## Self-Adaptive Physics-Informed Neural Networks using a Soft Attention Mechanism [AAAI-MLPS 2021]
+---
 
-### Levi McClenny<sup>1,2</sup>, Ulisses Braga-Neto<sup>1</sup>
+This repository builds on the implementation of the **Self-Adaptive Physics-Informed Neural Networks using a Soft Attention Mechanism** proposed in:
+DOI: https://doi.org/10.1016/j.jcp.2022.111722
 
-### Accepted to [AAAI-MLPS 2021](https://sites.google.com/view/aaai-mlps/proceedings?authuser=0) 
-
-### Update: The self-adaptive implementations of the Allen-Cahn, Burgers, and Helmholtz PDE systems, shown here, are available in our new package [*TensorDiffEq*](https://github.com/tensordiffeq/TensorDiffEq)
-#### Those examples in *TensorDiffEq* are available [here](https://github.com/tensordiffeq/TensorDiffEq/tree/main/examples)
-
-Paper: https://arxiv.org/pdf/2009.04544.pdf
-
-Abstract: _Physics-Informed Neural Networks (PINNs) have emerged recently as a promising application of deep neural networks to the numerical solution of nonlinear partial differential equations (PDEs).
-However, the original PINN algorithm is known to suffer from stability and accuracy problems in
-cases where the solution has sharp spatio-temporal transitions. These stiff PDEs require an unreasonably large number of collocation points to be solved accurately. It has been recognized that adaptive procedures are needed to force the neural network to fit accurately the stubborn spots in the solution of stiff PDEs. To accomplish this, previous approaches have used fixed weights hard-coded over regions of the solution deemed to be important. In this paper, we propose a fundamentally new method to train PINNs adaptively, where the adaptation weights are fully trainable, so the neural network learns by itself which regions of the solution are difficult and is forced to focus on them, which is reminiscent of soft multiplicative-mask attention mechanism used in computer vision. The basic idea behind these Self-Adaptive PINNs is to make the weights increase where the corresponding loss is higher, which is accomplished by training the network to simultaneously minimize the losses and maximize the weights, i.e., to find a saddle point in the cost surface. We show that this is formally equivalent to solving a PDE-constrained optimization problem using a penalty-based method, though in a way where the monotonically-nondecreasing penalty coefficients are trainable.
-Numerical experiments with an Allen-Cahn stiff PDE, the Self-Adaptive PINN outperformed other state-of-the-art PINN algorithms in L2 error by a wide margin, while using a smaller number of training epochs. An Appendix contains additional results with Burger's and Helmholtz PDEs, which confirmed the trends observed in the Allen-Cahn experiments._
-
-<sub><sub><sup>1</sup>Texas A&M Dept. of Electrical Engineering, College Station, TX</sub></sub><br>
-<sub><sub><sup>2</sup>US Army CCDC Army Research Lab, Aberdeen Proving Ground/Adelphi, MD</sub></sub><br>
 
 ## Requirements
+Code has been updated to use 'python 3.10'. Necessary packages can be found in the `requirements.txt` file.
 
-Code was implemented in `python 3.7` with the following package versions:
+## Conda Environment Setup (Recommended)
 
-```
-tensorflow version = 2.3
-keras version = 2.2.4
-```
+The repository now includes a `requirements.txt` for a modern tested stack.
 
-and `matplotlib 3.1.1` was used for visualization. It is expected that any combination of recent numpy/matplotlib will be sufficient, however issues have been experienced on tensorflow versions <2.3.0
-
-### Virtual Environment (Optional)
-
-**(Mac)** To create a virtual environment to run this code, download the repository either via `git clone` or by clicking download at the top of github, then navigate to the top-level folder in a terminal window and execute the commands
+1. Create and activate a conda environment:
 
 ```
-python3 -m venv --system-site-packages ./venv
-source ./venv/bin/activate
+conda create -n sa_pinn python=3.10 -y
+conda activate sa_pinn
 ```
 
-This will create a virtual environment named `venv` in that directory (first line) and drop you into it (second line). At that point you can install/uninstall package versions without effecting your overall environment. You can verify you're in the virtual environment if you see `(venv)` at the beginning of your terminal line. At this point you can install the exact versions of the packages listed here with the pip into the venv:
+2. Install the required packages from the repo root:
 
 ```
-pip install tensorflow==2.3 numpy==1.17.2 keras==2.2.4
+pip install -r requirements.txt
 ```
 
-run
+3. (Optional) Verify core package versions:
 
 ```
-python versiontest.py
+python -c "import tensorflow as tf, numpy as np, scipy; print(tf.__version__, np.__version__, scipy.__version__)"
 ```
 
-And you should see the following output:
+Expected output:
 
 ```
-Using TensorFlow backend
-tensorflow version = 2.3
-keras version = 2.2.4
-numpy version = 1.17.2
+2.15.1 1.26.4 1.12.0
 ```
+
+
 
 ## TeX Dependencies
 
@@ -90,13 +72,9 @@ python burgers.py --optimizer adam
 python burgers.py --optimizer learnable
 ```
 
-## Note
-
-The results in the paper were calculated on GPU. Running for the full 10k/10k training iterations for Adam and L-BFGS will likely take a very long time on CPU.
 
 ## Citation
 
-Cite using the Bibtex citation below:
 
 ```
 @article{mcclenny2020self,
