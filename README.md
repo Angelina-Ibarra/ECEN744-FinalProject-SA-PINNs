@@ -6,10 +6,13 @@ In this work we evaluate the effect of various optimization algorithms tailored 
 
 This repository builds on the implementation of the **Self-Adaptive Physics-Informed Neural Networks using a Soft Attention Mechanism** proposed in:
 DOI: https://doi.org/10.1016/j.jcp.2022.111722
+GitHub: https://github.com/levimcclenny/SA-PINNs
 
 
 ## Requirements
 Code has been updated to use 'python 3.10'. Necessary packages can be found in the `requirements.txt` file.
+
+Replace the _minimize.py and _optimize.py files in the .../site-packages/scipy folder in your conda environment with the modified versions found in the `Optimizers` folder. 
 
 ## Conda Environment Setup (Recommended)
 
@@ -56,20 +59,65 @@ The data used in this paper is publicly available in the Raissi implementation o
 
 ## Usage
 
-You can recreate the results of the paper by simply navigating to the desired system (i.e. opening the Burgers folder) and running the .py script in the folder. After opening the Burgers folder, simply run
+Each PDE is trained from its own directory. From the repo root, for example:
 
 ```
-python burgers.py
+cd Burgers && python burgers.py
 ```
 
-And the training will begin, followed by the plots.
+Training runs in two phases: **phase 1** updates the PINN weights (and self-adaptive masks where applicable) for `--tf-iter` epochs; **phase 2** refines **only the network weights** with L-BFGS or, when selected, SciPy quasi-Newton, for up to `--newton-iter` iterations. Results (CSVs and figures) are written under `Results/<PDE name>/`.
 
-You can change the optimizer using the --optimizer CLI flag. The code currently supports the Adam and Learnable optimizer.
+### Training scripts
+
+| Script | Directory |
+|--------|-----------|
+| Burgers | `Burgers/burgers.py` |
+| Allen–Cahn | `Allen-Cahn/AC.py` |
+| Helmholtz | `Helmholtz/helmholtz.py` |
+| Helmholtz (NTK variant) | `Helmholtz/helmholtz-NTK.py` |
+
+### Command-line flags
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--optimizer` | choice | `adam` | Phase-1 optimizer for **network** weights (see below). |
+| `--tf-iter` | int | `100` | Number of phase-1 epochs (Adam or learnable updates). |
+| `--newton-iter` | int | `100` | Maximum phase-2 iterations (L-BFGS or quasi-Newton on network weights only). |
+
+Helmholtz NTK (`helmholtz-NTK.py`) supports `--optimizer adam` and `--optimizer learnable` only (no quasi-Newton path in that script).
+
+### Optimizers (`--optimizer`)
+
+- **`adam`** — Standard Adam on the network weights in phase 1; collocation and boundary weight variables still use Adam. Phase 2 uses **L-BFGS** on the flattened network weights (same behavior as the original SA-PINN-style scripts).
+
+- **`learnable`** — The **learnable optimizer** (`Optimizers/learnable_optimizer.py`): a small learned network produces update directions for phase 1, while mask weights continue to use Adam. Phase 2 is still **L-BFGS** on the network weights.
+
+- **`quasi-newton`** — *(Allen–Cahn, Burgers, and Helmholtz only.)* Phase 1 uses **Adam** on the network weights (for a stable warm start). Phase 2 uses **`scipy.optimize.minimize`** with the quasi-Newton options used in `Quasi-Newton Optimizer Examples` (e.g. extended BFGS / `method_bfgs` such as `SSBroyden2`). This expects a SciPy installation where `_optimize.py` / `_minimize.py` have been replaced by your modified versions, as in those examples; stock SciPy may ignore some options or behave differently.
+
+### Example commands
+
+Minimal run (defaults: `adam`, 100 / 100 iterations):
 
 ```
-python burgers.py --optimizer adam
+cd Burgers && python3 burgers.py
+```
 
-python burgers.py --optimizer learnable
+Learnable phase 1, longer runs:
+
+```
+cd "Allen-Cahn" && python3 AC.py --optimizer learnable --tf-iter 5000 --newton-iter 500
+```
+
+Quasi-Newton phase 2 (after Adam phase 1):
+
+```
+cd Helmholtz && python3 helmholtz.py --optimizer quasi-newton --tf-iter 2000 --newton-iter 20000
+```
+
+Helmholtz NTK with custom iteration counts:
+
+```
+cd Helmholtz && python3 helmholtz-NTK.py --optimizer adam --tf-iter 200 --newton-iter 200
 ```
 
 

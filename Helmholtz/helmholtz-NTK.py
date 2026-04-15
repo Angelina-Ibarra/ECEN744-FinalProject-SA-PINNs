@@ -329,9 +329,21 @@ parser.add_argument(
     default="adam",
     help="Optimizer used for neural network parameter updates.",
 )
+parser.add_argument(
+    "--tf-iter",
+    type=int,
+    default=100,
+    help="Number of phase-1 (Adam or learnable) training epochs.",
+)
+parser.add_argument(
+    "--newton-iter",
+    type=int,
+    default=100,
+    help="Maximum L-BFGS refinement iterations on network weights.",
+)
 args = parser.parse_args()
-tf_iter = 100
-newton_iter = 100
+tf_iter = args.tf_iter
+newton_iter = args.newton_iter
 results_dir = build_results_dir(tf_iter=tf_iter, newton_iter=newton_iter, optimizer_name=args.optimizer)
 
 training_history, lbfgs_history = fit(

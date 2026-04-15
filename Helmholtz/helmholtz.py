@@ -38,6 +38,7 @@ if PROJECT_ROOT not in sys.path:
     sys.path.append(PROJECT_ROOT)
 
 from Optimizers.learnable_optimizer import LearnableOptimizer, reshape_to_model
+from Optimizers.pinn_quasi_newton import run_quasi_newton_refinement
 
 
 layer_sizes = [2, 50, 50, 50, 50, 1]
@@ -163,7 +164,8 @@ def fit(x_f, t_f, x_lb, y_lb, x_ub, y_ub, x_rb, y_rb, x_lftb, y_lftb, col_weight
     learnable_optimizer = LearnableOptimizer(learning_rate=0.001)
     training_history = []
 
-    print(f"starting {optimizer_name} training")
+    phase1_name = "adam" if optimizer_name == "quasi-newton" else optimizer_name
+    print(f"starting {phase1_name} training (phase 1)")
     for epoch in range(tf_iter):
         for i in range(n_batches):
 
@@ -195,18 +197,29 @@ def fit(x_f, t_f, x_lb, y_lb, x_ub, y_ub, x_rb, y_rb, x_lftb, y_lftb, col_weight
             )
 
 
-    print("Starting L-BFGS training")
-
-    loss_and_flat_grad = get_loss_and_flat_grad(x_f, y_f, x_lb, y_lb, x_ub, y_ub, x_rb, y_rb, x_lftb, y_lftb, col_weights)
-
-    _, lbfgs_f_hist, _ = lbfgs(
-        loss_and_flat_grad,
-        get_weights(u_model),
-        Struct(),
-        maxIter=newton_iter,
-        learningRate=0.8,
+    loss_and_flat_grad = get_loss_and_flat_grad(
+        x_f, y_f, x_lb, y_lb, x_ub, y_ub, x_rb, y_rb, x_lftb, y_lftb, col_weights
     )
-    lbfgs_history = [[step, float(value.numpy())] for step, value in enumerate(lbfgs_f_hist)]
+
+    if optimizer_name == "quasi-newton":
+        print("Starting quasi-Newton (SciPy) refinement on network weights")
+        lbfgs_history = run_quasi_newton_refinement(
+            loss_and_flat_grad,
+            get_weights(u_model),
+            newton_iter,
+        )
+    else:
+        print("Starting L-BFGS training")
+        _, lbfgs_f_hist, _ = lbfgs(
+            loss_and_flat_grad,
+            get_weights(u_model),
+            Struct(),
+            maxIter=newton_iter,
+            learningRate=0.8,
+        )
+        lbfgs_history = [
+            [step, float(value.numpy())] for step, value in enumerate(lbfgs_f_hist)
+        ]
     return training_history, lbfgs_history
 
 def get_loss_and_flat_grad(x_f, y_f, x_lb, y_lb, x_ub, y_ub, x_rb, y_rb, x_lftb, y_lftb, col_weights):
@@ -303,13 +316,29 @@ y_lftb = tf.convert_to_tensor(X_lftb[:,1:2], dtype=tf.float32)
 parser = argparse.ArgumentParser(description="Train Helmholtz PINN")
 parser.add_argument(
     "--optimizer",
-    choices=["adam", "learnable"],
+    choices=["adam", "learnable", "quasi-newton"],
     default="adam",
-    help="Optimizer used for neural network parameter updates.",
+    help=(
+        "Phase-1 optimizer for network weights (Adam or learnable); "
+        "'quasi-newton' uses Adam in phase 1 then SciPy quasi-Newton in phase 2 "
+        "(requires modified SciPy minimize as in Quasi-Newton Optimizer Examples)."
+    ),
+)
+parser.add_argument(
+    "--tf-iter",
+    type=int,
+    default=100,
+    help="Number of phase-1 (Adam or learnable) training epochs.",
+)
+parser.add_argument(
+    "--newton-iter",
+    type=int,
+    default=100,
+    help="Maximum L-BFGS or quasi-Newton refinement iterations on network weights.",
 )
 args = parser.parse_args()
-tf_iter = 100
-newton_iter = 100
+tf_iter = args.tf_iter
+newton_iter = args.newton_iter
 results_dir = build_results_dir(tf_iter=tf_iter, newton_iter=newton_iter, optimizer_name=args.optimizer)
 
 training_history, lbfgs_history = fit(
