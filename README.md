@@ -16,7 +16,7 @@ Replace the _minimize.py and _optimize.py files in the .../site-packages/scipy f
 
 ## Conda Environment Setup (Recommended)
 
-The repository now includes a `requirements.txt` for a modern tested stack.
+The repository now includes a `requirements.txt` for an updated tested stack.
 
 1. Create and activate a conda environment:
 
