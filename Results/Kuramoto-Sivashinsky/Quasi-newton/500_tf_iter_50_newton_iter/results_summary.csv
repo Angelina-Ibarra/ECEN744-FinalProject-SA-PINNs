@@ -1,0 +1,2 @@
+optimizer,tf_iter,newton_iter,error_u,final_training_loss,final_lbfgs_loss
+quasi-newton,500,50,6.031216513724932,0.391474187374115,0.14295420050621033

@@ -1,0 +1,2 @@
+optimizer,tf_iter,newton_iter,error_u,final_training_loss,final_lbfgs_loss
+adam,100,100,0.9566396189383523,0.2643120288848877,0.20334087312221527
