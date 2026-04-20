@@ -75,6 +75,7 @@ Training runs in two phases: **phase 1** updates the PINN weights (and self-adap
 | Allen–Cahn | `Allen-Cahn/AC.py` |
 | Helmholtz | `Helmholtz/helmholtz.py` |
 | Helmholtz (NTK variant) | `Helmholtz/helmholtz-NTK.py` |
+| Kuramoto–Sivashinsky | `Kuramoto-Sivashinsky/ks.py` |
 
 ### Command-line flags
 
@@ -92,7 +93,7 @@ Helmholtz NTK (`helmholtz-NTK.py`) supports `--optimizer adam` and `--optimizer 
 
 - **`learnable`** — The **learnable optimizer** (`Optimizers/learnable_optimizer.py`): a small learned network produces update directions for phase 1, while mask weights continue to use Adam. Phase 2 is still **L-BFGS** on the network weights.
 
-- **`quasi-newton`** — *(Allen–Cahn, Burgers, and Helmholtz only.)* Phase 1 uses **Adam** on the network weights (for a stable warm start). Phase 2 uses **`scipy.optimize.minimize`** with the quasi-Newton options used in `Quasi-Newton Optimizer Examples` (e.g. extended BFGS / `method_bfgs` such as `SSBroyden2`). This expects a SciPy installation where `_optimize.py` / `_minimize.py` have been replaced by your modified versions, as in those examples; stock SciPy may ignore some options or behave differently.
+- **`quasi-newton`** — *(Allen–Cahn, Burgers, Helmholtz, and Kuramoto–Sivashinsky only.)* Phase 1 uses **Adam** on the network weights (for a stable warm start). Phase 2 uses **`scipy.optimize.minimize`** with the quasi-Newton options used in `Quasi-Newton Optimizer Examples` (e.g. extended BFGS / `method_bfgs` such as `SSBroyden2`). This expects a SciPy installation where `_optimize.py` / `_minimize.py` have been replaced by your modified versions, as in those examples; stock SciPy may ignore some options or behave differently.
 
 ### Example commands
 
@@ -118,6 +119,12 @@ Helmholtz NTK with custom iteration counts:
 
 ```
 cd Helmholtz && python3 helmholtz-NTK.py --optimizer adam --tf-iter 200 --newton-iter 200
+```
+
+Kuramoto–Sivashinsky (4th-order PDE, requires `KS.mat` — run `generate_ks_data.py` once if missing):
+
+```
+cd Kuramoto-Sivashinsky && python3 ks.py --tf-iter 500 --newton-iter 50
 ```
 
 
