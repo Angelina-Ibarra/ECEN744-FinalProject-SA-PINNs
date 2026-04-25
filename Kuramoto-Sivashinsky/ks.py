@@ -17,6 +17,10 @@ from tensorflow.keras.layers import Dense, Input
 from tensorflow.keras import layers, activations
 from scipy.interpolate import griddata
 from eager_lbfgs import lbfgs, Struct
+
+SEED = 1234
+np.random.seed(SEED)
+tf.random.set_seed(SEED)
 try:
     from pyDOE import lhs
 except Exception:
@@ -93,8 +97,10 @@ def neural_net(layer_sizes):
     return model
 
 
-def build_results_dir(tf_iter, newton_iter, optimizer_name):
+def build_results_dir(tf_iter, newton_iter, optimizer_name, qn_method_bfgs=None):
     optimizer_folder = optimizer_name.capitalize()
+    if optimizer_name == "quasi-newton" and qn_method_bfgs:
+        optimizer_folder = f"Quasi-Newton_{qn_method_bfgs}"
     run_folder = f"{tf_iter}_tf_iter_{newton_iter}_newton_iter"
     results_dir = os.path.join(PROJECT_ROOT, "Results", "Kuramoto-Sivashinsky", optimizer_folder, run_folder)
     os.makedirs(results_dir, exist_ok=True)
@@ -167,15 +173,15 @@ def grad(model, x_f_batch, t_f_batch, x0_batch, t0_batch, u0_batch, x_lb, t_lb, 
     return loss_value, mse_0, mse_b, mse_f, grads, grads_col, grads_u, gradients_u, gradients_f
 
 
-def fit(x_f, t_f, x0, t0, u0, x_lb, t_lb, x_ub, t_ub, col_weights, u_weights, tf_iter, newton_iter, optimizer_name="adam"):
+def fit(x_f, t_f, x0, t0, u0, x_lb, t_lb, x_ub, t_ub, col_weights, u_weights, tf_iter, newton_iter, optimizer_name="adam", qn_method="BFGS", qn_method_bfgs="SSBroyden2"):
 
     batch_sz = N_f
     n_batches = N_f // batch_sz
 
     start_time = time.time()
-    tf_optimizer = tf.keras.optimizers.Adam(lr=0.005, beta_1=.99)
-    tf_optimizer_weights = tf.keras.optimizers.Adam(lr=0.005, beta_1=.99)
-    tf_optimizer_u = tf.keras.optimizers.Adam(lr=0.005, beta_1=.99)
+    tf_optimizer = tf.keras.optimizers.legacy.Adam(learning_rate=0.005, beta_1=0.99)
+    tf_optimizer_weights = tf.keras.optimizers.legacy.Adam(learning_rate=0.005, beta_1=0.99)
+    tf_optimizer_u = tf.keras.optimizers.legacy.Adam(learning_rate=0.005, beta_1=0.99)
     learnable_optimizer = LearnableOptimizer(learning_rate=0.005)
     training_history = []
 
@@ -227,11 +233,14 @@ def fit(x_f, t_f, x0, t0, u0, x_lb, t_lb, x_ub, t_ub, col_weights, u_weights, tf
     )
 
     if optimizer_name == "quasi-newton":
-        print("Starting quasi-Newton (SciPy) refinement on network weights")
+        print(f"Starting quasi-Newton (SciPy) refinement on network weights "
+              f"[qn_method={qn_method}, qn_method_bfgs={qn_method_bfgs}]")
         lbfgs_history = run_quasi_newton_refinement(
             loss_and_flat_grad,
             get_weights(u_model),
             newton_iter,
+            qn_method=qn_method,
+            qn_method_bfgs=qn_method_bfgs,
         )
     else:
         print("Starting L-BFGS training")
@@ -303,9 +312,12 @@ idx_t = np.random.choice(t.shape[0], N_b, replace=False)
 tb = t[idx_t, :]
 
 # grab collocation points using latin hypercube sampling
-X_f = lb + (ub - lb) * lhs(2, N_f)
+# x in [-1, 1], t in [0, 1]
+lb_f = np.array([-1.0, 0.0])
+ub_f = np.array([1.0, 1.0])
+X_f = lb_f + (ub_f - lb_f) * lhs(2, N_f)
 x_f = tf.convert_to_tensor(X_f[:, 0:1], dtype=tf.float32)
-t_f = tf.convert_to_tensor(np.abs(X_f[:, 1:2]), dtype=tf.float32)
+t_f = tf.convert_to_tensor(X_f[:, 1:2], dtype=tf.float32)
 
 
 X0 = np.concatenate((x0, 0*x0), 1)             # (x0, 0)
@@ -346,10 +358,31 @@ parser.add_argument(
     default=100,
     help="Maximum L-BFGS or quasi-Newton refinement iterations on network weights.",
 )
+parser.add_argument(
+    "--qn-method",
+    choices=["BFGS", "bfgsr", "bfgsz"],
+    default="BFGS",
+    help="Top-level quasi-Newton family (only used when --optimizer quasi-newton).",
+)
+parser.add_argument(
+    "--qn-method-bfgs",
+    choices=["BFGS", "BFGS_scipy", "SSBFGS_OL", "SSBFGS_AB",
+             "SSBroyden1", "SSBroyden2", "SSBroyden3"],
+    default="SSBroyden2",
+    help=(
+        "BFGS sub-variant when --qn-method=BFGS. "
+        "Requires patched SciPy _optimize.py from Optimizers/."
+    ),
+)
 args = parser.parse_args()
 tf_iter = args.tf_iter
 newton_iter = args.newton_iter
-results_dir = build_results_dir(tf_iter=tf_iter, newton_iter=newton_iter, optimizer_name=args.optimizer)
+results_dir = build_results_dir(
+    tf_iter=tf_iter,
+    newton_iter=newton_iter,
+    optimizer_name=args.optimizer,
+    qn_method_bfgs=args.qn_method_bfgs if args.optimizer == "quasi-newton" else None,
+)
 
 training_history, lbfgs_history = fit(
     x_f,
@@ -366,6 +399,8 @@ training_history, lbfgs_history = fit(
     tf_iter=tf_iter,
     newton_iter=newton_iter,
     optimizer_name=args.optimizer,
+    qn_method=args.qn_method,
+    qn_method_bfgs=args.qn_method_bfgs,
 )
 write_csv(
     os.path.join(results_dir, "training_loss.csv"),
@@ -395,10 +430,14 @@ print('Error u: %e' % (error_u))
 
 final_training_loss = training_history[-1][1] if training_history else float("nan")
 final_lbfgs_loss = lbfgs_history[-1][1] if lbfgs_history else float("nan")
+qn_method_log = args.qn_method if args.optimizer == "quasi-newton" else ""
+qn_method_bfgs_log = args.qn_method_bfgs if args.optimizer == "quasi-newton" else ""
 write_csv(
     os.path.join(results_dir, "results_summary.csv"),
-    ["optimizer", "tf_iter", "newton_iter", "error_u", "final_training_loss", "final_lbfgs_loss"],
-    [[args.optimizer, tf_iter, newton_iter, float(error_u), final_training_loss, final_lbfgs_loss]],
+    ["optimizer", "qn_method", "qn_method_bfgs", "tf_iter", "newton_iter",
+     "error_u", "final_training_loss", "final_lbfgs_loss"],
+    [[args.optimizer, qn_method_log, qn_method_bfgs_log, tf_iter, newton_iter,
+      float(error_u), final_training_loss, final_lbfgs_loss]],
 )
 
 
@@ -438,7 +477,6 @@ ax.plot(t[150]*np.ones((2, 1)), line, 'k--', linewidth=1)
 
 ax.set_xlabel('$t$')
 ax.set_ylabel('$x$')
-leg = ax.legend(frameon=False, loc='best')
 ax.set_title('$u(t,x)$', fontsize=10)
 fig.savefig(os.path.join(results_dir, "u_field_and_slices.png"), dpi=300, bbox_inches="tight")
 plt.close(fig)
@@ -452,7 +490,7 @@ ax.plot(x, Exact_u[:, 50], 'b-', linewidth=2, label='Exact')
 ax.plot(x, U_pred[50, :], 'r--', linewidth=2, label='Prediction')
 ax.set_xlabel('$x$')
 ax.set_ylabel('$u(t,x)$')
-ax.set_title('$t = %.2f$' % (t[50]), fontsize=10)
+ax.set_title('$t = %.2f$' % (t[50, 0]), fontsize=10)
 ax.axis('square')
 ax.set_xlim([-1.1, 1.1])
 ax.set_ylim([-1.1, 1.1])
@@ -465,7 +503,7 @@ ax.set_ylabel('$u(t,x)$')
 ax.axis('square')
 ax.set_xlim([-1.1, 1.1])
 ax.set_ylim([-1.1, 1.1])
-ax.set_title('$t = %.2f$' % (t[100]), fontsize=10)
+ax.set_title('$t = %.2f$' % (t[100, 0]), fontsize=10)
 ax.legend(loc='upper center', bbox_to_anchor=(0.5, -0.3), ncol=5, frameon=False)
 
 ax = plt.subplot(gs1[0, 2])
@@ -476,7 +514,7 @@ ax.set_ylabel('$u(t,x)$')
 ax.axis('square')
 ax.set_xlim([-1.1, 1.1])
 ax.set_ylim([-1.1, 1.1])
-ax.set_title('$t = %.2f$' % (t[150]), fontsize=10)
+ax.set_title('$t = %.2f$' % (t[150, 0]), fontsize=10)
 
 # show u_pred across domain
 fig, ax = plt.subplots()

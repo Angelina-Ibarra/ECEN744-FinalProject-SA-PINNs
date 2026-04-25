@@ -1,0 +1,2 @@
+optimizer,qn_method,qn_method_bfgs,tf_iter,newton_iter,error_u,final_training_loss,final_lbfgs_loss
+adam,,,10000,10000,0.005648933669177238,0.1220036968588829,0.0017645290354266763

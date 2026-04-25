@@ -25,9 +25,11 @@ pgf_with_latex = {                      # setup matplotlib to use latex for outp
     "pgf.texsystem": "pdflatex",        # change this if using xetex or lautex
     "text.usetex": True,                # use LaTeX to write all text
     "font.family": "serif",
-    "font.serif": [],                   # blank entries should cause plots to inherit fonts from the document
-    "font.sans-serif": [],
-    "font.monospace": [],
+    # Concrete fallbacks so matplotlib doesn't warn when text.usetex is False
+    # and no LaTeX is available to inherit fonts from.
+    "font.serif": ["DejaVu Serif", "Times New Roman", "Times", "Liberation Serif"],
+    "font.sans-serif": ["DejaVu Sans", "Arial", "Helvetica", "Liberation Sans"],
+    "font.monospace": ["DejaVu Sans Mono", "Courier New", "Liberation Mono"],
     "axes.labelsize": 10,               # LaTeX default is 10pt font.
     "font.size": 10,
     "legend.fontsize": 8,               # Make the legend/label fonts a little smaller
