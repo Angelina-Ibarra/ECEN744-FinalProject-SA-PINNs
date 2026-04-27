@@ -1,0 +1,2 @@
+optimizer,tf_iter,newton_iter,error_u,final_training_loss,final_lbfgs_loss
+learnable,10000,10000,0.5004930724151037,757.2462158203125,0.6225099563598633
