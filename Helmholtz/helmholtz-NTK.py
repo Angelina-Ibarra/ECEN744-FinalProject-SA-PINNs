@@ -17,6 +17,10 @@ from tensorflow.keras.layers import Dense, Input
 from tensorflow.keras import layers, activations
 from scipy.interpolate import griddata
 from eager_lbfgs import lbfgs, Struct
+
+SEED = 1234
+np.random.seed(SEED)
+tf.random.set_seed(SEED)
 try:
     from pyDOE import lhs
 except Exception:

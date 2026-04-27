@@ -88,17 +88,18 @@ def reshape_to_model(vars, model):
     for (i, curr_layer) in enumerate(model.layers):
         weights_and_biases = curr_layer.get_weights()
 
-    # Check if the layer actually has weights and then set them
-    if len(weights_and_biases) > 1:
-        new_weights_and_biases = []
-        for l in range(len(weights_and_biases)):
-            shape_weights = tf.shape(weights_and_biases[l])
-            no_weights = tf.reduce_prod(shape_weights)
-            new_weights_and_biases.append(tf.reshape(vars[k:k+no_weights], shape_weights))
-            k += no_weights 
+        # Check if the layer actually has weights and then set them
+        if len(weights_and_biases) > 1:
+            new_weights_and_biases = []
+            for l in range(len(weights_and_biases)):
+                shape_weights = tuple(int(d) for d in weights_and_biases[l].shape)
+                no_weights = int(np.prod(shape_weights))
+                slab = tf.reshape(vars[k:k+no_weights], shape_weights)
+                new_weights_and_biases.append(slab.numpy())
+                k += no_weights
 
-        # Now set the new weights  
-        model.layers[i].set_weights(new_weights_and_biases)
+            # Now set the new weights
+            model.layers[i].set_weights(new_weights_and_biases)
 
 def standardize_tensor(vars, ep = 1e-5):
     return vars/tf.sqrt(tf.reduce_mean(tf.square(vars) + ep, axis=0))
@@ -317,7 +318,7 @@ class LearnableOptimizer():
       [mag, dir, mag_nom] = optimizerModel([weights, gradients, m, v, steps])
     
     # Blackbox update
-    bb_update = self.lambda1*dir*tf.exp(self.lambda2*mag)/tf.sqrt(v[:,-1] + self.ep)
+    bb_update = self.lambda1*dir*tf.exp(self.lambda2*mag)/tf.sqrt(v[:, -1:] + self.ep)
 
     # Scaled Adam update
     adam_scaled = tf.exp(self.lambda3*mag_nom[:,0])*adam_update

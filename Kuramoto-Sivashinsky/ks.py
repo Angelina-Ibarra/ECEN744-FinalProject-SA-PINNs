@@ -164,13 +164,12 @@ def u_x_model(u_model, x, t):
 def grad(model, x_f_batch, t_f_batch, x0_batch, t0_batch, u0_batch, x_lb, t_lb, x_ub, t_ub, col_weights, u_weights):
     with tf.GradientTape(persistent=True) as tape:
         loss_value, mse_0, mse_b, mse_f = loss(x_f_batch, t_f_batch, x0_batch, t0_batch, u0_batch, x_lb, t_lb, x_ub, t_ub, col_weights, u_weights)
-        grads = tape.gradient(loss_value, u_model.trainable_variables)
-        grads_col = tape.gradient(loss_value, col_weights)
-        grads_u = tape.gradient(loss_value, u_weights)
-        gradients_u = tape.gradient(mse_0, u_model.trainable_variables)
-        gradients_f = tape.gradient(mse_f, u_model.trainable_variables)
+    grads = tape.gradient(loss_value, u_model.trainable_variables)
+    grads_col = tape.gradient(loss_value, col_weights)
+    grads_u = tape.gradient(loss_value, u_weights)
+    del tape
 
-    return loss_value, mse_0, mse_b, mse_f, grads, grads_col, grads_u, gradients_u, gradients_f
+    return loss_value, mse_0, mse_b, mse_f, grads, grads_col, grads_u
 
 
 def fit(x_f, t_f, x0, t0, u0, x_lb, t_lb, x_ub, t_ub, col_weights, u_weights, tf_iter, newton_iter, optimizer_name="adam", qn_method="BFGS", qn_method_bfgs="SSBroyden2"):
@@ -182,7 +181,7 @@ def fit(x_f, t_f, x0, t0, u0, x_lb, t_lb, x_ub, t_ub, col_weights, u_weights, tf
     tf_optimizer = tf.keras.optimizers.legacy.Adam(learning_rate=0.005, beta_1=0.99)
     tf_optimizer_weights = tf.keras.optimizers.legacy.Adam(learning_rate=0.005, beta_1=0.99)
     tf_optimizer_u = tf.keras.optimizers.legacy.Adam(learning_rate=0.005, beta_1=0.99)
-    learnable_optimizer = LearnableOptimizer(learning_rate=0.005)
+    learnable_optimizer = LearnableOptimizer(learning_rate=0.001)
     training_history = []
 
     phase1_name = "adam" if optimizer_name == "quasi-newton" else optimizer_name
@@ -198,7 +197,7 @@ def fit(x_f, t_f, x0, t0, u0, x_lb, t_lb, x_ub, t_ub, col_weights, u_weights, tf
             x_f_batch = x_f[i*batch_sz:(i*batch_sz + batch_sz),]
             t_f_batch = t_f[i*batch_sz:(i*batch_sz + batch_sz),]
 
-            loss_value, mse_0, mse_b, mse_f, grads, grads_col, grads_u, g_u, g_f = grad(u_model, x_f_batch, t_f_batch, x0_batch, t0_batch, u0_batch, x_lb, t_lb, x_ub, t_ub, col_weights, u_weights)
+            loss_value, mse_0, mse_b, mse_f, grads, grads_col, grads_u = grad(u_model, x_f_batch, t_f_batch, x0_batch, t0_batch, u0_batch, x_lb, t_lb, x_ub, t_ub, col_weights, u_weights)
 
             if optimizer_name == "learnable":
                 weights_updated = learnable_optimizer.apply_gradients(

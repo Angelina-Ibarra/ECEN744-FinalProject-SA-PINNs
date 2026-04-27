@@ -1,0 +1,2 @@
+optimizer,qn_method,qn_method_bfgs,tf_iter,newton_iter,error_u,final_training_loss,final_lbfgs_loss
+quasi-newton,BFGS,SSBroyden2,10000,10000,0.00013707692323058148,0.022387146949768066,8.759129173085967e-07
