@@ -58,8 +58,13 @@ for i, width in enumerate(layer_sizes):
 
 
 # L-BFGS weight getting and setting from https://github.com/pierremtb/PINNs-TF2.0
+# Skip layers without trainable weights (e.g. the Lambda input-rescaling layer).
+def _trainable_layers(model):
+    return [layer for layer in model.layers if layer.get_weights()]
+
+
 def set_weights(model, w, sizes_w, sizes_b):
-        for i, layer in enumerate(model.layers[0:]):
+        for i, layer in enumerate(_trainable_layers(model)):
             start_weights = sum(sizes_w[:i]) + sum(sizes_b[:i])
             end_weights = sum(sizes_w[:i+1]) + sum(sizes_b[:i])
             weights = w[start_weights:end_weights]
@@ -72,7 +77,7 @@ def set_weights(model, w, sizes_w, sizes_b):
 
 def get_weights(model):
         w = []
-        for layer in model.layers[0:]:
+        for layer in _trainable_layers(model):
             weights_biases = layer.get_weights()
             weights = weights_biases[0].flatten()
             biases = weights_biases[1]
@@ -84,9 +89,16 @@ def get_weights(model):
 
 
 # define the neural network model
-def neural_net(layer_sizes):
+# domain bounds for input rescaling: x in [-Lx/2, Lx/2], t in [0, 1].
+# At L=8*pi the raw x range is ~[-12.6, 12.6], which saturates tanh -- so
+# we map (x, t) -> [-1, 1]^2 inside the network. The chain rule still flows
+# through tf.gradients, so f_model/u_x_model can keep using raw (x, t).
+def neural_net(layer_sizes, lb_in, ub_in):
+    lb_t = tf.constant(lb_in, dtype=tf.float32)
+    ub_t = tf.constant(ub_in, dtype=tf.float32)
     model = Sequential()
     model.add(layers.InputLayer(input_shape=(layer_sizes[0],)))
+    model.add(layers.Lambda(lambda z: 2.0 * (z - lb_t) / (ub_t - lb_t) - 1.0))
     for width in layer_sizes[1:-1]:
         model.add(layers.Dense(
             width, activation=tf.nn.tanh,
@@ -280,8 +292,10 @@ def predict(X_star):
 
 
 # define constants and weight vectors
-lb = np.array([-1.0])
-ub = np.array([1.0])
+# KS domain: x in [-Lx/2, Lx/2] with Lx = 8*pi (must match generate_ks_data.py)
+Lx = 8.0 * np.pi
+lb = np.array([-Lx / 2.0])
+ub = np.array([Lx / 2.0])
 
 N0 = 100
 N_b = 25
@@ -290,7 +304,9 @@ N_f = 20000
 col_weights = tf.Variable(tf.random.uniform([N_f, 1]))
 u_weights = tf.Variable(tf.random.uniform([N0, 1]))
 
-u_model = neural_net(layer_sizes)
+u_model = neural_net(layer_sizes,
+                     lb_in=[-Lx / 2.0, 0.0],
+                     ub_in=[Lx / 2.0, 1.0])
 u_model.summary()
 
 # import reference data (generated via generate_ks_data.py)
@@ -311,9 +327,9 @@ idx_t = np.random.choice(t.shape[0], N_b, replace=False)
 tb = t[idx_t, :]
 
 # grab collocation points using latin hypercube sampling
-# x in [-1, 1], t in [0, 1]
-lb_f = np.array([-1.0, 0.0])
-ub_f = np.array([1.0, 1.0])
+# x in [-Lx/2, Lx/2], t in [0, 1]
+lb_f = np.array([-Lx / 2.0, 0.0])
+ub_f = np.array([Lx / 2.0, 1.0])
 X_f = lb_f + (ub_f - lb_f) * lhs(2, N_f)
 x_f = tf.convert_to_tensor(X_f[:, 0:1], dtype=tf.float32)
 t_f = tf.convert_to_tensor(X_f[:, 1:2], dtype=tf.float32)
@@ -419,8 +435,8 @@ X, T = np.meshgrid(x, t)
 X_star = np.hstack((X.flatten()[:, None], T.flatten()[:, None]))
 u_star = Exact_u.T.flatten()[:, None]
 
-lb = np.array([-1.0, 0.0])
-ub = np.array([1.0, 1.0])
+lb = np.array([-Lx / 2.0, 0.0])
+ub = np.array([Lx / 2.0, 1.0])
 
 u_pred, f_u_pred = predict(X_star)
 
@@ -484,24 +500,26 @@ plt.close(fig)
 gs1 = gridspec.GridSpec(1, 3)
 gs1.update(top=1-1/3, bottom=0, left=0.1, right=0.9, wspace=0.5)
 
+u_max = float(np.max(np.abs(Exact_u))) * 1.1
+slice_xlim = [lb[0] * 1.02, ub[0] * 1.02]
+slice_ylim = [-u_max, u_max]
+
 ax = plt.subplot(gs1[0, 0])
 ax.plot(x, Exact_u[:, 50], 'b-', linewidth=2, label='Exact')
 ax.plot(x, U_pred[50, :], 'r--', linewidth=2, label='Prediction')
 ax.set_xlabel('$x$')
 ax.set_ylabel('$u(t,x)$')
 ax.set_title('$t = %.2f$' % (t[50, 0]), fontsize=10)
-ax.axis('square')
-ax.set_xlim([-1.1, 1.1])
-ax.set_ylim([-1.1, 1.1])
+ax.set_xlim(slice_xlim)
+ax.set_ylim(slice_ylim)
 
 ax = plt.subplot(gs1[0, 1])
 ax.plot(x, Exact_u[:, 100], 'b-', linewidth=2, label='Exact')
 ax.plot(x, U_pred[100, :], 'r--', linewidth=2, label='Prediction')
 ax.set_xlabel('$x$')
 ax.set_ylabel('$u(t,x)$')
-ax.axis('square')
-ax.set_xlim([-1.1, 1.1])
-ax.set_ylim([-1.1, 1.1])
+ax.set_xlim(slice_xlim)
+ax.set_ylim(slice_ylim)
 ax.set_title('$t = %.2f$' % (t[100, 0]), fontsize=10)
 ax.legend(loc='upper center', bbox_to_anchor=(0.5, -0.3), ncol=5, frameon=False)
 
@@ -510,16 +528,15 @@ ax.plot(x, Exact_u[:, 150], 'b-', linewidth=2, label='Exact')
 ax.plot(x, U_pred[150, :], 'r--', linewidth=2, label='Prediction')
 ax.set_xlabel('$x$')
 ax.set_ylabel('$u(t,x)$')
-ax.axis('square')
-ax.set_xlim([-1.1, 1.1])
-ax.set_ylim([-1.1, 1.1])
+ax.set_xlim(slice_xlim)
+ax.set_ylim(slice_ylim)
 ax.set_title('$t = %.2f$' % (t[150, 0]), fontsize=10)
 
 # show u_pred across domain
 fig, ax = plt.subplots()
 
 h = plt.imshow(U_pred.T, interpolation='nearest', cmap='rainbow',
-               extent=[0.0, 1.0, -1.0, 1.0],
+               extent=[0.0, 1.0, lb[0], ub[0]],
                origin='lower', aspect='auto')
 divider = make_axes_locatable(ax)
 cax = divider.append_axes("right", size="5%", pad=0.05)
@@ -533,7 +550,7 @@ plt.close(fig)
 fig, ax = plt.subplots()
 
 ec = plt.imshow(FU_pred.T, interpolation='nearest', cmap='rainbow',
-                extent=[0.0, 1.0, -1.0, 1.0],
+                extent=[0.0, 1.0, lb[0], ub[0]],
                 origin='lower', aspect='auto')
 
 ax.autoscale_view()

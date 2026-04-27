@@ -3,8 +3,12 @@ Generate reference solution for the Kuramoto-Sivashinsky benchmark via ETDRK4
 spectral integration. One-shot utility; re-run only if the domain/IC changes.
 
 PDE: u_t + u*u_x + u_xx + u_xxxx = 0
-Domain: x in [-1, 1] (periodic), t in [0, 1]
-IC: u(x, 0) = -sin(pi*x)
+Domain: x in [-Lx/2, Lx/2] (periodic), Lx = 8*pi, t in [0, 1]
+IC: u(x, 0) = cos(2*pi*x/Lx) * (1 + sin(2*pi*x/Lx))   (Kassam-Trefethen seed)
+
+L=8*pi gives 3-4 unstable Fourier modes => weak chaos / traveling-wave regime,
+suitable for a non-trivial PINN benchmark while staying tractable on a single
+GPU. Re-run this script after editing parameters to refresh KS.mat.
 
 Method: ETDRK4 (Kassam & Trefethen, 2005) with 256 Fourier modes, dt = 1e-4,
 saves 201 time frames (dt_save = 0.005). Output layout matches AC.mat /
@@ -17,14 +21,14 @@ import scipy.io
 
 # ---- problem parameters ----
 N = 256                          # Fourier modes
-Lx = 2.0                         # domain length (x in [-1, 1])
+Lx = 8.0 * np.pi                 # domain length (x in [-Lx/2, Lx/2])
 T = 1.0                          # final time
 dt = 1e-4                        # integrator step
 n_save = 201                     # saved time frames (incl. t=0 and t=T)
 M_contour = 16                   # contour points for ETDRK4 coefficients
 
 # ---- spatial grid (periodic) ----
-x = np.linspace(-1.0, 1.0, N, endpoint=False)
+x = np.linspace(-Lx / 2.0, Lx / 2.0, N, endpoint=False)
 k = (2.0 * np.pi / Lx) * np.concatenate([np.arange(0, N // 2),
                                          np.arange(-N // 2, 0)])
 
@@ -50,8 +54,9 @@ def nonlinear(v_hat):
     u_phys = np.real(np.fft.ifft(v_hat))
     return g * np.fft.fft(u_phys ** 2)
 
-# ---- initial condition ----
-u0 = -np.sin(np.pi * x)
+# ---- initial condition (Kassam-Trefethen, scaled to one period over Lx) ----
+kx = 2.0 * np.pi / Lx
+u0 = np.cos(kx * x) * (1.0 + np.sin(kx * x))
 v = np.fft.fft(u0)
 
 # ---- time integration ----
